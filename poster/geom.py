@@ -45,11 +45,6 @@ def poly_d(points, closed=True):
     return d + ('Z' if closed else '')
 
 
-def smooth_d(points, closed=True, n=10):
-    pts, _ = catmull(points, n=n, closed=closed)
-    return poly_d(pts, closed)
-
-
 def normals(pts):
     ns = []
     for i in range(len(pts)):
@@ -90,34 +85,7 @@ def tube_outline(points, widths, n=10, cap_start=True, cap_end=True):
     return out
 
 
-def offset_line(points, widths, side, inset, t0=0.0, t1=1.0, n=10):
-    """Линия вдоль трубки на заданной стороне (side=+1/-1), отступ inset от края."""
-    pts, ts = catmull(points, n=n)
-    ws = []
-    for t in ts:
-        i = min(int(t), len(widths) - 2)
-        u = t - i
-        ws.append(widths[i] * (1 - u) + widths[i + 1] * u)
-    ns = normals(pts)
-    N = len(pts)
-    a, b = int(t0 * (N - 1)), int(t1 * (N - 1))
-    res = []
-    for i in range(a, b + 1):
-        p, (nx, ny), w = pts[i], ns[i], ws[i]
-        r = w / 2 - inset
-        res.append((p[0] + side * nx * r, p[1] + side * ny * r))
-    return res
-
-
 def rot(p, ang, c=(0, 0)):
     a = math.radians(ang)
     x, y = p[0] - c[0], p[1] - c[1]
     return (c[0] + x * math.cos(a) - y * math.sin(a), c[1] + x * math.sin(a) + y * math.cos(a))
-
-
-def ellipse_pts(cx, cy, rx, ry, ang=0, n=48):
-    res = []
-    for k in range(n):
-        t = 2 * math.pi * k / n
-        res.append(rot((cx + rx * math.cos(t), cy + ry * math.sin(t)), ang, (cx, cy)))
-    return res

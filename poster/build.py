@@ -1,8 +1,12 @@
 """Сборка постера «Олимпиада по хирургии» (A3) в SVG/HTML.
 
-    python3 build.py   -> poster.svg / poster.html (A3 в обрез),
-                          poster_bleed.svg / poster_bleed.html (с вылетами 3 мм)
-    node render.js     -> PDF и PNG 300 dpi
+    python3 grip.py           -> grips.json (подбор хвата: углы суставов и положение инструментов)
+    python3 hands_render.py   -> hands_render.json (3D-рендер рук в векторную линогравюру)
+    python3 build.py          -> poster.svg / poster.html (A3 в обрез),
+                                 poster_bleed.svg / poster_bleed.html (с вылетами 3 мм)
+    node render.js            -> PDF и PNG 300 dpi
+
+Первые два шага нужны только при изменении рук — их результаты лежат в репозитории.
 
 Макет в единицах 1000 x 1414 (A3, 1 ед. = 0.297 мм). Палитра — строго 4 цвета.
 Весь текст переводится в кривые.
@@ -11,8 +15,9 @@ import math
 import os
 import random
 
-import hands
-from geom import BORD, RED, WHITE, INK, f, catmull, poly_d, rot
+import json
+
+from geom import BORD, RED, WHITE, INK, f, catmull, poly_d, rot, tube_outline
 from typeset import Font, text_path, inside
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -59,13 +64,6 @@ def halftone(fn, bbox, step, angle, color, rmax, extra=''):
     return f'<path d="{"".join(ds)}" fill="{color}" {extra}/>'
 
 
-def recolor(svg, color=INK):
-    """Фрагмент одним цветом — для жёсткой тени."""
-    for c in (BORD, RED, WHITE):
-        svg = svg.replace(f'"{c}"', f'"{color}"')
-    return svg
-
-
 # ------------------------------------------------------------------ сетка
 
 LOGO_R = 56
@@ -105,24 +103,8 @@ QR_Y = BAND_Y + 36
 QR_LABELS = ['РЕГИСТРАЦИЯ', 'ГРУППА ВКОНТАКТЕ', 'ПРОГРАММА И РЕГЛАМЕНТ']
 URL = 'vk.ru/surgery_olympiad_sibmed'
 
-# положение рук: (x, y, угол, масштаб, зеркально)
-HAND1 = (446, 352, -57, 1.32, False)    # скальпель, сверху справа
-HAND2 = (606, 300, -22, 1.32, True)     # иглодержатель, снизу слева
-
-
-def place(p, spec):
-    x, y, ang, sc, mirror = spec
-    px, py = p
-    if mirror:
-        px = -px
-    q = rot((px * sc, py * sc), ang)
-    return (x + q[0], y + q[1])
-
-
-def tr(spec):
-    x, y, ang, sc, mirror = spec
-    m = ' scale(-1,1)' if mirror else ''
-    return f'translate({f(x)},{f(y)}) rotate({f(ang)}){m} scale({f(sc)})'
+# руки: векторный рендер 3D-модели (python3 hands_render.py)
+HANDS = json.load(open(os.path.join(HERE, 'hands_render.json')))
 
 
 # ------------------------------------------------------------------ слои
@@ -165,11 +147,23 @@ def logos():
                    for cx in (M + LOGO_R, W - M - LOGO_R))
 
 
+def needle():
+    """Изогнутая игла в губках иглодержателя: сужается от ушка к острию."""
+    pts = HANDS['holder']['needle']
+    ctrl = pts[::4] + [pts[-1]]
+    ws = [7.5 - 6 * k / (len(ctrl) - 1) for k in range(len(ctrl))]
+    d = poly_d(tube_outline(ctrl, ws))
+    return (f'<path d="{d}" fill="{INK}" stroke="{INK}" stroke-width="7" stroke-linejoin="round"/>'
+            f'<path d="{d}" fill="{WHITE}"/>')
+
+
 def illustration():
     s = ''
-    for spec, h in ((HAND2, hands.hand_holder()), (HAND1, hands.hand_scalpel())):
-        s += f'<g transform="translate(9,11)"><g transform="{tr(spec)}">{recolor(h)}</g></g>'
-        s += f'<g transform="{tr(spec)}">{h}</g>'
+    for k in ('holder', 'scalpel'):
+        s += f'<path d="{HANDS[k]["sil"]}" fill="{INK}" stroke="{INK}" stroke-width="9" stroke-linejoin="round" transform="translate(9,11)"/>'
+        s += HANDS[k]['svg']
+        if k == 'holder':
+            s += needle()
     return s
 
 
@@ -192,7 +186,7 @@ STITCH_A = 15
 
 
 def thread_path():
-    eye = place(hands.needle_pts()[0], HAND2)
+    eye = tuple(HANDS['holder']['needle'][0])
     x0 = THREAD_X
     ctrl = [eye, (eye[0] + 18, eye[1] + 64), (740, 480), (800, 548),
             (640, 640), (400, 720), (170, 800), (60, 850), (x0, 910),
